@@ -6,6 +6,9 @@ import { KongApi, API_REGIONS } from "./api.js";
 import * as analytics from "./operations/analytics.js";
 import * as configuration from "./operations/configuration.js";
 import * as controlPlanes from "./operations/controlPlanes.js";
+import express, { Request, Response } from "express";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { OpenAI } from "openai";
 
 /**
  * Main MCP server class for Kong Konnect integration
@@ -148,6 +151,8 @@ class KongKonnectMcpServer extends McpServer {
                 throw new Error(`Unknown tool method: ${tool.method}`);
             }
 
+            const resultJson = JSON.stringify(result, null, 2);
+
             return {
               content: [
                 {
@@ -181,16 +186,91 @@ async function main() {
   const apiKey = process.env.KONNECT_ACCESS_TOKEN;
   const apiRegion = process.env.KONNECT_REGION || API_REGIONS.US;
 
+  const app = express();
+
+  // app.use(express.json());
+
+  const transports: {[sessionId: string]: SSEServerTransport} = {};
+  const connectedSessions: Set<string> = new Set(); // Track fully connected sessions
+
   // Create server instance
   const server = new KongKonnectMcpServer({
     apiKey,
     apiRegion
   });
 
-  // Create transport and connect
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Kong Konnect MCP Server is running...");
+  app.get("/sse", async (_: Request, res: Response) => {
+    const transport = new SSEServerTransport('/messages', res);
+    transports[transport.sessionId] = transport;
+    res.on("close", () => {
+      delete transports[transport.sessionId];
+    });
+    await server.connect(transport);
+  });
+  
+  app.post("/messages", async (req: Request, res: Response) => {
+    const sessionId = req.query.sessionId as string;
+    const transport = transports[sessionId];
+    if (transport) {
+      await transport.handlePostMessage(req, res);
+    } else {
+      res.status(400).send('No transport found for sessionId');
+    }
+  });
+
+  app.get("/tools", (_: Request, res: Response) => {
+    const allTools = tools();
+
+    function getTypeInfo(schema: any): any {
+      // Get the actual type, handling wrapped types (like ZodDefault)
+      const typeSchema = schema._def?.innerType || schema;
+      const param: any = {};
+
+      if (typeSchema._def?.typeName) {
+        param.type = typeSchema._def.typeName === 'ZodString' ? 'string'
+          : typeSchema._def.typeName === 'ZodNumber' ? 'number'
+          : typeSchema._def.typeName === 'ZodBoolean' ? 'boolean'
+          : typeSchema._def.typeName === 'ZodArray' ? 'array'
+          : typeSchema._def.typeName === 'ZodObject' ? 'object'
+          : 'string';
+
+        // Handle array element types
+        if (param.type === 'array' && typeSchema._def.type) {
+          param.items = getTypeInfo(typeSchema._def.type);
+        }
+
+        // Handle object properties
+        if (param.type === 'object' && typeSchema._def.shape) {
+          param.properties = Object.fromEntries(
+            Object.entries(typeSchema._def.shape).map(([key, val]) => [key, getTypeInfo(val)])
+          );
+        }
+      }
+
+      if (schema.isOptional?.()) {
+        param.optional = true;
+      }
+
+      if (schema.description) {
+        param.description = schema.description;
+      }
+
+      return param;
+    }
+
+    res.json(allTools.map(tool => ({
+      method: tool.method,
+      description: tool.description,
+      parameters: Object.fromEntries(
+        Object.entries(tool.parameters.shape).map(([key, schema]: [string, any]) => 
+          [key, getTypeInfo(schema)]
+        )
+      )
+    })));
+  });
+
+  app.listen(3001);
+
 }
 
 // Run the server

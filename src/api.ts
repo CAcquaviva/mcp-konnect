@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from "axios";
+import https from "node:https";
 import { 
   ApiRequestFilter, 
   TimeRange, 
@@ -28,7 +29,8 @@ export class KongApi {
   constructor(options: KongApiOptions = {}) {
     // Default to US region if not specified
     const apiRegion = options.apiRegion || process.env.KONNECT_REGION || API_REGIONS.US;
-    this.baseUrl = `https://${apiRegion}.api.konghq.com/v2`;
+    this.baseUrl = `https://konnect-api.kong-sales-engineering.com/v2`;
+    // this.baseUrl = `https://${apiRegion}.api.konghq.com/v2`;
     this.apiKey = options.apiKey || process.env.KONNECT_ACCESS_TOKEN || "";
 
     if (!this.apiKey) {
@@ -45,7 +47,8 @@ export class KongApi {
       console.error(`Making request to: ${url}`);
 
       const headers = {
-        "Authorization": `Bearer ${this.apiKey}`,
+        "apikey": `${this.apiKey}`,
+        // "Authorization": `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
         "Accept": "application/json"
       };
@@ -55,6 +58,9 @@ export class KongApi {
         url,
         headers,
         data: data ? data : undefined,
+        httpsAgent: new https.Agent({
+          rejectUnauthorized: false
+        })
       };
 
       const response = await axios(config);
@@ -100,7 +106,6 @@ export class KongApi {
   // Control Planes API methods
   async listControlPlanes(pageSize = 10, pageNumber?: number, filterName?: string, filterClusterType?: string, 
     filterCloudGateway?: boolean, labels?: string, sort?: string): Promise<any> {
-    
     let endpoint = `/control-planes?page[size]=${pageSize}`;
 
     if (pageNumber) {
