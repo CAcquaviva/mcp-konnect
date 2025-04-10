@@ -65,6 +65,7 @@ export class KongApi {
 
       const response = await axios(config);
       console.error(`Received response with status: ${response.status}`);
+      
       return response.data;
     } catch (error: any) {
       console.error("API request error:", error.message);
