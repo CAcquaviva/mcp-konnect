@@ -1,0 +1,136 @@
+openapi: 3.0.0
+info:
+  title: Kong Konnect MCP Server API
+  description: API for interacting with the Kong Konnect Model Context Protocol server
+  version: 1.0.0
+servers:
+  - url: https://ai-gateway.kong-sales-engineering.com/mcp-konnect
+    description: Local development server
+paths:
+  /sse:
+    get:
+      summary: Establish SSE connection
+      description: Creates a Server-Sent Events connection for real-time communication with the MCP server
+      operationId: establishSseConnection
+      security:
+        - bearerAuth: []
+        - basicAuth: []
+      responses:
+        '200':
+          description: SSE connection established successfully
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Stream of server-sent events
+        '500':
+          description: Server error
+  /messages:
+    post:
+      summary: Send message to MCP server
+      description: Sends a message to the MCP server through an established SSE connection
+      operationId: sendMessage
+      security:
+        - bearerAuth: []
+        - basicAuth: []
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          description: The session ID of the established SSE connection
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  description: The type of message being sent
+                  example: "request"
+                id:
+                  type: string
+                  description: Unique identifier for the message
+                  example: "msg_123456"
+                data:
+                  type: object
+                  description: The message payload
+      responses:
+        '200':
+          description: Message processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: No transport found for sessionId or invalid request
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "No transport found for sessionId"
+        '500':
+          description: Server error
+  /tools:
+    get:
+      summary: Get available tools
+      description: Returns a list of all available tools with their methods, descriptions, and parameters
+      operationId: getTools
+      security:
+        - bearerAuth: []
+        - basicAuth: []
+      responses:
+        '200':
+          description: List of available tools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    method:
+                      type: string
+                      description: The name of the tool method
+                      example: "query_api_requests"
+                    description:
+                      type: string
+                      description: Description of what the tool does
+                      example: "Query API requests with various filters"
+                    parameters:
+                      type: object
+                      description: Parameters accepted by the tool
+                      additionalProperties:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            description: Parameter type
+                            enum: [string, number, boolean, array, object]
+                          description:
+                            type: string
+                            description: Parameter description
+                          optional:
+                            type: boolean
+                            description: Whether the parameter is optional
+                          items:
+                            type: object
+                            description: For array types, describes the array items
+                          properties:
+                            type: object
+                            description: For object types, describes the object properties
+        '500':
+          description: Server error
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    basicAuth:
+      type: http
+      scheme: basic
+  schemas: {}

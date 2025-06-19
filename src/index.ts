@@ -188,7 +188,7 @@ async function main() {
 
   const app = express();
 
-  // app.use(express.json());
+  app.use(express.json());
 
   const transports: {[sessionId: string]: SSEServerTransport} = {};
   const connectedSessions: Set<string> = new Set(); // Track fully connected sessions
