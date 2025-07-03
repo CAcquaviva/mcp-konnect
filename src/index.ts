@@ -8,7 +8,10 @@ import * as configuration from "./operations/configuration.js";
 import * as controlPlanes from "./operations/controlPlanes.js";
 import express, { Request, Response } from "express";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { OpenAI } from "openai";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { randomUUID } from "node:crypto";
 
 /**
  * Main MCP server class for Kong Konnect integration
@@ -41,7 +44,7 @@ class KongKonnectMcpServer extends McpServer {
         tool.method,
         tool.description,
         tool.parameters.shape,
-        async (args: any, _extra: RequestHandlerExtra) => {
+        async (args: any, _extra: RequestHandlerExtra<any, any>) => {
           try {
             let result;
 
@@ -190,7 +193,10 @@ async function main() {
 
   app.use(express.json());
 
-  const transports: {[sessionId: string]: SSEServerTransport} = {};
+  const transports = {
+    streamable: {} as Record<string, StreamableHTTPServerTransport>,
+    sse: {} as Record<string, SSEServerTransport>
+  };
   const connectedSessions: Set<string> = new Set(); // Track fully connected sessions
 
   // Create server instance
@@ -201,16 +207,16 @@ async function main() {
 
   app.get("/sse", async (_: Request, res: Response) => {
     const transport = new SSEServerTransport('/messages', res);
-    transports[transport.sessionId] = transport;
+    transports.sse[transport.sessionId] = transport;
     res.on("close", () => {
-      delete transports[transport.sessionId];
+      delete transports.sse[transport.sessionId];
     });
     await server.connect(transport);
   });
   
   app.post("/messages", async (req: Request, res: Response) => {
     const sessionId = req.query.sessionId as string;
-    const transport = transports[sessionId];
+    const transport = transports.sse[sessionId];
     if (transport) {
       await transport.handlePostMessage(req, res);
     } else {
@@ -268,6 +274,71 @@ async function main() {
       )
     })));
   });
+
+
+  app.post('/mcp', async (req, res) => {
+    // Check for existing session ID
+    console.log("mcp request", req.body);
+    console.log("isInitializeRequest result:", isInitializeRequest(req.body));
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    let transport: StreamableHTTPServerTransport;
+  
+    if (sessionId && transports.streamable[sessionId]) {
+      // Reuse existing transport
+      transport = transports.streamable[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      // New initialization request
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId) => {
+          // Store the transport by session ID
+          transports.streamable[sessionId] = transport;
+        }
+      });
+  
+      // Clean up transport when closed
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          delete transports.streamable[transport.sessionId];
+        }
+      };
+  
+      // Connect to the MCP server
+      await server.connect(transport);
+    } else {
+      // Invalid request
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: 'Bad Request: No valid session ID provided',
+        },
+        id: null,
+      });
+      return;
+    }
+  
+    // Handle the request
+    await transport.handleRequest(req, res, req.body);
+  });
+  
+  // Reusable handler for GET and DELETE requests
+  const handleSessionRequest = async (req: express.Request, res: express.Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (!sessionId || !transports.streamable[sessionId]) {
+      res.status(400).send('Invalid or missing session ID');
+      return;
+    }
+    
+    const transport = transports.streamable[sessionId];
+    await transport.handleRequest(req, res);
+  };
+  
+  // Handle GET requests for server-to-client notifications via SSE
+  app.get('/mcp', handleSessionRequest);
+  
+  // Handle DELETE requests for session termination
+  app.delete('/mcp', handleSessionRequest);
 
   app.listen(3001);
 
