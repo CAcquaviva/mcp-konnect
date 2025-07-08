@@ -195,9 +195,9 @@ async function main() {
 
   const transports = {
     streamable: {} as Record<string, StreamableHTTPServerTransport>,
-    sse: {} as Record<string, SSEServerTransport>
+    // sse: {} as Record<string, SSEServerTransport>
   };
-  const connectedSessions: Set<string> = new Set(); // Track fully connected sessions
+  // const connectedSessions: Set<string> = new Set(); // Track fully connected sessions
 
   // Create server instance
   const server = new KongKonnectMcpServer({
@@ -205,75 +205,75 @@ async function main() {
     apiRegion
   });
 
-  app.get("/sse", async (_: Request, res: Response) => {
-    const transport = new SSEServerTransport('/messages', res);
-    transports.sse[transport.sessionId] = transport;
-    res.on("close", () => {
-      delete transports.sse[transport.sessionId];
-    });
-    await server.connect(transport);
-  });
+  // app.get("/sse", async (_: Request, res: Response) => {
+  //   const transport = new SSEServerTransport('/messages', res);
+  //   transports.sse[transport.sessionId] = transport;
+  //   res.on("close", () => {
+  //     delete transports.sse[transport.sessionId];
+  //   });
+  //   await server.connect(transport);
+  // });
   
-  app.post("/messages", async (req: Request, res: Response) => {
-    const sessionId = req.query.sessionId as string;
-    const transport = transports.sse[sessionId];
-    if (transport) {
-      await transport.handlePostMessage(req, res);
-    } else {
-      res.status(400).send('No transport found for sessionId');
-    }
-  });
+  // app.post("/messages", async (req: Request, res: Response) => {
+  //   const sessionId = req.query.sessionId as string;
+  //   const transport = transports.sse[sessionId];
+  //   if (transport) {
+  //     await transport.handlePostMessage(req, res);
+  //   } else {
+  //     res.status(400).send('No transport found for sessionId');
+  //   }
+  // });
 
-  app.get("/tools", (_: Request, res: Response) => {
-    const allTools = tools();
+  // app.get("/tools", (_: Request, res: Response) => {
+  //   const allTools = tools();
 
-    function getTypeInfo(schema: any): any {
-      // Get the actual type, handling wrapped types (like ZodDefault)
-      const typeSchema = schema._def?.innerType || schema;
-      const param: any = {};
+  //   function getTypeInfo(schema: any): any {
+  //     // Get the actual type, handling wrapped types (like ZodDefault)
+  //     const typeSchema = schema._def?.innerType || schema;
+  //     const param: any = {};
 
-      if (typeSchema._def?.typeName) {
-        param.type = typeSchema._def.typeName === 'ZodString' ? 'string'
-          : typeSchema._def.typeName === 'ZodNumber' ? 'number'
-          : typeSchema._def.typeName === 'ZodBoolean' ? 'boolean'
-          : typeSchema._def.typeName === 'ZodArray' ? 'array'
-          : typeSchema._def.typeName === 'ZodObject' ? 'object'
-          : 'string';
+  //     if (typeSchema._def?.typeName) {
+  //       param.type = typeSchema._def.typeName === 'ZodString' ? 'string'
+  //         : typeSchema._def.typeName === 'ZodNumber' ? 'number'
+  //         : typeSchema._def.typeName === 'ZodBoolean' ? 'boolean'
+  //         : typeSchema._def.typeName === 'ZodArray' ? 'array'
+  //         : typeSchema._def.typeName === 'ZodObject' ? 'object'
+  //         : 'string';
 
-        // Handle array element types
-        if (param.type === 'array' && typeSchema._def.type) {
-          param.items = getTypeInfo(typeSchema._def.type);
-        }
+  //       // Handle array element types
+  //       if (param.type === 'array' && typeSchema._def.type) {
+  //         param.items = getTypeInfo(typeSchema._def.type);
+  //       }
 
-        // Handle object properties
-        if (param.type === 'object' && typeSchema._def.shape) {
-          param.properties = Object.fromEntries(
-            Object.entries(typeSchema._def.shape).map(([key, val]) => [key, getTypeInfo(val)])
-          );
-        }
-      }
+  //       // Handle object properties
+  //       if (param.type === 'object' && typeSchema._def.shape) {
+  //         param.properties = Object.fromEntries(
+  //           Object.entries(typeSchema._def.shape).map(([key, val]) => [key, getTypeInfo(val)])
+  //         );
+  //       }
+  //     }
 
-      if (schema.isOptional?.()) {
-        param.optional = true;
-      }
+  //     if (schema.isOptional?.()) {
+  //       param.optional = true;
+  //     }
 
-      if (schema.description) {
-        param.description = schema.description;
-      }
+  //     if (schema.description) {
+  //       param.description = schema.description;
+  //     }
 
-      return param;
-    }
+  //     return param;
+  //   }
 
-    res.json(allTools.map(tool => ({
-      method: tool.method,
-      description: tool.description,
-      parameters: Object.fromEntries(
-        Object.entries(tool.parameters.shape).map(([key, schema]: [string, any]) => 
-          [key, getTypeInfo(schema)]
-        )
-      )
-    })));
-  });
+  //   res.json(allTools.map(tool => ({
+  //     method: tool.method,
+  //     description: tool.description,
+  //     parameters: Object.fromEntries(
+  //       Object.entries(tool.parameters.shape).map(([key, schema]: [string, any]) => 
+  //         [key, getTypeInfo(schema)]
+  //       )
+  //     )
+  //   })));
+  // });
 
 
   app.post('/mcp', async (req, res) => {
