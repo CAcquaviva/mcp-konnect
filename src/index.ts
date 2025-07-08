@@ -1,14 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { tools } from "./tools.js";
 import { KongApi, API_REGIONS } from "./api.js";
 import * as analytics from "./operations/analytics.js";
 import * as configuration from "./operations/configuration.js";
 import * as controlPlanes from "./operations/controlPlanes.js";
-import express, { Request, Response } from "express";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { OpenAI } from "openai";
+import express from "express";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { randomUUID } from "node:crypto";
 
 /**
  * Main MCP server class for Kong Konnect integration
@@ -41,7 +41,7 @@ class KongKonnectMcpServer extends McpServer {
         tool.method,
         tool.description,
         tool.parameters.shape,
-        async (args: any, _extra: RequestHandlerExtra) => {
+        async (args: any, _extra: RequestHandlerExtra<any, any>) => {
           try {
             let result;
 
@@ -188,10 +188,11 @@ async function main() {
 
   const app = express();
 
-  // app.use(express.json());
+  app.use(express.json());
 
-  const transports: {[sessionId: string]: SSEServerTransport} = {};
-  const connectedSessions: Set<string> = new Set(); // Track fully connected sessions
+  const transports = {
+    streamable: {} as Record<string, StreamableHTTPServerTransport>
+  };
 
   // Create server instance
   const server = new KongKonnectMcpServer({
@@ -199,75 +200,69 @@ async function main() {
     apiRegion
   });
 
-  app.get("/sse", async (_: Request, res: Response) => {
-    const transport = new SSEServerTransport('/messages', res);
-    transports[transport.sessionId] = transport;
-    res.on("close", () => {
-      delete transports[transport.sessionId];
-    });
-    await server.connect(transport);
+  app.post('/mcp', async (req, res) => {
+    // Check for existing session ID
+    console.log("mcp request", req.body);
+    console.log("isInitializeRequest result:", isInitializeRequest(req.body));
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    let transport: StreamableHTTPServerTransport;
+  
+    if (sessionId && transports.streamable[sessionId]) {
+      // Reuse existing transport
+      transport = transports.streamable[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      // New initialization request
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId) => {
+          // Store the transport by session ID
+          transports.streamable[sessionId] = transport;
+        }
+      });
+  
+      // Clean up transport when closed
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          delete transports.streamable[transport.sessionId];
+        }
+      };
+  
+      // Connect to the MCP server
+      await server.connect(transport);
+    } else {
+      // Invalid request
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: 'Bad Request: No valid session ID provided',
+        },
+        id: null,
+      });
+      return;
+    }
+  
+    // Handle the request
+    await transport.handleRequest(req, res, req.body);
   });
   
-  app.post("/messages", async (req: Request, res: Response) => {
-    const sessionId = req.query.sessionId as string;
-    const transport = transports[sessionId];
-    if (transport) {
-      await transport.handlePostMessage(req, res);
-    } else {
-      res.status(400).send('No transport found for sessionId');
+  // Reusable handler for GET and DELETE requests
+  const handleSessionRequest = async (req: express.Request, res: express.Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (!sessionId || !transports.streamable[sessionId]) {
+      res.status(400).send('Invalid or missing session ID');
+      return;
     }
-  });
-
-  app.get("/tools", (_: Request, res: Response) => {
-    const allTools = tools();
-
-    function getTypeInfo(schema: any): any {
-      // Get the actual type, handling wrapped types (like ZodDefault)
-      const typeSchema = schema._def?.innerType || schema;
-      const param: any = {};
-
-      if (typeSchema._def?.typeName) {
-        param.type = typeSchema._def.typeName === 'ZodString' ? 'string'
-          : typeSchema._def.typeName === 'ZodNumber' ? 'number'
-          : typeSchema._def.typeName === 'ZodBoolean' ? 'boolean'
-          : typeSchema._def.typeName === 'ZodArray' ? 'array'
-          : typeSchema._def.typeName === 'ZodObject' ? 'object'
-          : 'string';
-
-        // Handle array element types
-        if (param.type === 'array' && typeSchema._def.type) {
-          param.items = getTypeInfo(typeSchema._def.type);
-        }
-
-        // Handle object properties
-        if (param.type === 'object' && typeSchema._def.shape) {
-          param.properties = Object.fromEntries(
-            Object.entries(typeSchema._def.shape).map(([key, val]) => [key, getTypeInfo(val)])
-          );
-        }
-      }
-
-      if (schema.isOptional?.()) {
-        param.optional = true;
-      }
-
-      if (schema.description) {
-        param.description = schema.description;
-      }
-
-      return param;
-    }
-
-    res.json(allTools.map(tool => ({
-      method: tool.method,
-      description: tool.description,
-      parameters: Object.fromEntries(
-        Object.entries(tool.parameters.shape).map(([key, schema]: [string, any]) => 
-          [key, getTypeInfo(schema)]
-        )
-      )
-    })));
-  });
+    
+    const transport = transports.streamable[sessionId];
+    await transport.handleRequest(req, res);
+  };
+  
+  // Handle GET requests for server-to-client notifications via SSE
+  app.get('/mcp', handleSessionRequest);
+  
+  // Handle DELETE requests for session termination
+  app.delete('/mcp', handleSessionRequest);
 
   app.listen(3001);
 
