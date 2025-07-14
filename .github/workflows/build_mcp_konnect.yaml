@@ -54,30 +54,30 @@ jobs:
         push: true
         tags: claudioacquaviva/mcp-konnect
   
-  deploy_mcp_konnect:
-    needs: build_mcp_konnect
-    runs-on: ubuntu-latest
-    name: Deploy MCP Konnect
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+  #deploy_mcp_konnect:
+  #  needs: build_mcp_konnect
+  #  runs-on: ubuntu-latest
+  #  name: Deploy MCP Konnect
+  #  steps:
+  #  - name: Checkout
+  #    uses: actions/checkout@v3
 
-    - id: 'auth'
-      name: 'Authenticate to Google Cloud'
-      uses: 'google-github-actions/auth@v1.0.0'
-      with:
-        workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
-        service_account: ${{ secrets.SE_OPERATIONS_SERVICE_ACCOUNT }}
+  #  - id: 'auth'
+  #    name: 'Authenticate to Google Cloud'
+  #    uses: 'google-github-actions/auth@v1.0.0'
+  #    with:
+  #      workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+  #      service_account: ${{ secrets.SE_OPERATIONS_SERVICE_ACCOUNT }}
 
-    - id: get-gke-credentials
-      uses: google-github-actions/get-gke-credentials@v1.0.0
-      with:
-        cluster_name: operations-konnect
-        location: us-central1-a
+  #  - id: get-gke-credentials
+  #    uses: google-github-actions/get-gke-credentials@v1.0.0
+  #    with:
+  #      cluster_name: operations-konnect
+  #      location: us-central1-a
 
-    - name: Install MCP Konnect
-      working-directory: ./deploy
-      run: |
-        envsubst < mcp-konnect.yaml | kubectl apply -n mcp -f -
-      env:
-        VERSION: ${{ github.sha }}
+  #  - name: Install MCP Konnect
+  #    working-directory: ./deploy
+  #    run: |
+  #      envsubst < mcp-konnect.yaml | kubectl apply -n mcp -f -
+  #    env:
+  #      VERSION: ${{ github.sha }}
