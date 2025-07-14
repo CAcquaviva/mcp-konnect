@@ -6,6 +6,13 @@ on:
       - 'src/**'
       - 'deploy/**'
 
+  workflow_dispatch: 
+    branches:
+      - 'main'
+    paths:
+      - 'src/**'
+      - 'deploy/**'
+
 permissions:
   contents: 'read'
   id-token: 'write'
