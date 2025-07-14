@@ -1,4 +1,4 @@
-# Kong Konnect MCP Server - Acqua
+# Kong Konnect MCP Server
 
 A Model Context Protocol (MCP) server for interacting with Kong Konnect APIs, allowing AI assistants to query and analyze Kong Gateway configurations, traffic, and analytics.
 
