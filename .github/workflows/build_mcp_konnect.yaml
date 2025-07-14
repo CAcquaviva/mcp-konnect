@@ -2,8 +2,7 @@ on:
   push: 
     branches:
       - 'main'
-    paths:
-      - 'src/**'
+    paths: - 'src/**'
       - 'deploy/**'
 
   workflow_dispatch: 
@@ -53,7 +52,7 @@ jobs:
         context: ./
         file: ./Dockerfile
         push: true
-        tags: kong/sales-engineering:mcp-konnect-${{ github.sha }}
+        tags: claudioacquaviva/mcp-konnect
   
   deploy_mcp_konnect:
     needs: build_mcp_konnect
