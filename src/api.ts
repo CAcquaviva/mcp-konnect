@@ -47,8 +47,8 @@ export class KongApi {
       console.error(`Making request to: ${url}`);
 
       const headers = {
-        "apikey": `${this.apiKey}`,
-        // "Authorization": `Bearer ${this.apiKey}`,
+        //"apikey": `${this.apiKey}`,
+        "Authorization": `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
         "Accept": "application/json"
       };
