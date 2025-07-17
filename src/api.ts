@@ -29,8 +29,8 @@ export class KongApi {
   constructor(options: KongApiOptions = {}) {
     // Default to US region if not specified
     const apiRegion = options.apiRegion || process.env.KONNECT_REGION || API_REGIONS.US;
-    this.baseUrl = `https://konnect-api.kong-sales-engineering.com/v2`;
-    // this.baseUrl = `https://${apiRegion}.api.konghq.com/v2`;
+    //this.baseUrl = `https://konnect-api.kong-sales-engineering.com/v2`;
+    this.baseUrl = `https://${apiRegion}.api.konghq.com/v2`;
     this.apiKey = options.apiKey || process.env.KONNECT_ACCESS_TOKEN || "";
 
     if (!this.apiKey) {
